@@ -25,7 +25,7 @@ class CTSDensityModel(object):
                 context[2] = obs[i-1, j] if i > 0 else 0
                 context[1] = obs[i-1, j-1] if i > 0 and j > 0 else 0
                 context[0] = obs[i-1, j+1] if i > 0 and j < self.factors.shape[1]-1 else 0
-
+                
                 log_prob += self.factors[i, j].update(context, obs[i, j])
                 log_recoding_prob += self.factors[i, j].log_prob(context, obs[i, j])
 

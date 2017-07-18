@@ -10,7 +10,7 @@ from utilities.cts import CTS
 
 
 class ExplorationBonus(object):
-  def __init__(self, width=21, height=21, num_bins=4, beta=0.05):
+  def __init__(self, width=42, height=42, num_bins=8, beta=0.05):
     self.frame_shape = (width, height)
     self.beta = beta
     self.density_model = CTS(context_length=4, max_alphabet_size=num_bins)

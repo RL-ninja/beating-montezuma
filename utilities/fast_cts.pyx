@@ -113,6 +113,7 @@ cdef double node_update(CTSNodeStruct* node, int[:] context, int symbol):
     cdef CTSNodeStruct* child
     cdef double lp_child
     cdef double lp_node
+
     if context.shape[0] > 0:
         child = node_get_child(node, context[context.shape[0]-1])
         lp_child = node_update(child, context[:context.shape[0]-1], symbol)
@@ -226,13 +227,11 @@ cdef CTSStruct* make_cts(int context_length, int max_alphabet_size=256,
 cdef void free_cts(CTSStruct* cts):
     free_cts_node(cts[0]._root)
 
-cdef double cts_update(CTSStruct* cts, int[:] context, int symbol):
+cdef double cts_update(CTSStruct* cts, int[:] context, int symbol):    
     cts[0]._time += 1.0
     cts[0].log_alpha = log(1.0 / (cts[0]._time + 1.0))
     cts[0].log_1_minus_alpha = log(cts[0]._time / (cts[0]._time + 1.0))
-
     cdef double log_prob = node_update(cts[0]._root, context, symbol)
-
     return log_prob
 
 cdef double cts_log_prob(CTSStruct* cts, int[:] context, int symbol):
@@ -280,19 +279,18 @@ cdef class CTSDensityModel:
         for i in range(self.height):
             self.cts_factors[i] = <CTSStruct*>PyMem_Malloc(sizeof(CTSStruct)*width)
             for j in range(self.width):
-                self.cts_factors[i][j] = make_cts(4, max_alphabet_size=num_bins)[0]
-                
+                self.cts_factors[i][j] = make_cts(4, max_alphabet_size=num_bins)[0]                
     def __dealloc__(self):
         pass
 
 
     def update(self, obs):
-        obs = resize(obs, (self.height, self.width), preserve_range=True, mode='constant')
+        obs = resize(obs, (self.height, self.width), preserve_range=True)
         obs = np.floor((obs*self.num_bins)).astype(np.int32)
-        
         log_prob, log_recoding_prob = self._update(obs)
         return self.exploration_bonus(log_prob, log_recoding_prob)
     
+
     cpdef (double, double) _update(self, int[:, :] obs):
         cdef int[:] context = np.array([0, 0, 0, 0], np.int32)
         cdef double log_prob = 0.0
@@ -306,10 +304,9 @@ cdef class CTSDensityModel:
                 context[2] = obs[i-1, j] if i > 0 else 0
                 context[1] = obs[i-1, j-1] if i > 0 and j > 0 else 0
                 context[0] = obs[i-1, j+1] if i > 0 and j < self.width-1 else 0
-
+                print(i, j)
                 log_prob += cts_update(&self.cts_factors[i][j], context, obs[i, j])
                 log_recoding_prob += cts_log_prob(&self.cts_factors[i][j], context, obs[i, j])
-
         return log_prob, log_recoding_prob
 
     def exploration_bonus(self, log_prob, log_recoding_prob):
