@@ -14,6 +14,7 @@ from algorithms.paac import PAACLearner
 from utilities.fast_cts import CTSDensityModel
 # original CTS version#2 (logic is the same)
 # from utilities.cts_bonus import ExplorationBonus
+import numpy as np
 
 class PAACCTSLearner(PAACLearner):
     """docstring for PAACCTSLearner"""
@@ -47,5 +48,4 @@ class PAACCTSLearner(PAACLearner):
             reward = -1.0        
         bonus = self._compute_bonus(state)
         reward += bonus
-        # print(reward)
         return reward

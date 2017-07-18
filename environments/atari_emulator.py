@@ -36,7 +36,7 @@ class AtariEmulator(BaseEnvironment):
         # (i.e., four 84x84 images)
         self.observation_pool = ObservationPool(np.zeros((IMG_SIZE_X, IMG_SIZE_Y, NR_IMAGES), dtype=np.uint8))
         self.rgb_screen = np.zeros((self.screen_height, self.screen_width, 3), dtype=np.uint8)
-        self.gray_screen = np.zeros((self.screen_height, self.screen_width,1), dtype=np.uint8)
+        self.gray_screen = np.zeros((self.screen_height, self.screen_width, 1), dtype=np.uint8)
         self.frame_pool = FramePool(np.empty((2, self.screen_height,self.screen_width), dtype=np.uint8),
                                     self.__process_frame_pool)
 
