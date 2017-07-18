@@ -265,15 +265,18 @@ cdef class CTSDensityModel:
     cdef unsigned int num_bins
     cdef unsigned int height
     cdef unsigned int width
+    cdef float c
+    cdef unsigned int n
     cdef float beta
     cdef CTSStruct** cts_factors
 
-    def __init__(self, int height=42, int width=42, int num_bins=8, float beta=0.05):
+    def __init__(self, int height=42, int width=42, int num_bins=8, float beta=0.05, c=0.1, global_step=0):
         self.height = height
         self.width = width
         self.beta = beta
         self.num_bins = num_bins
-        
+        self.c = c
+        self.n = global_step
         self.cts_factors = <CTSStruct**>PyMem_Malloc(sizeof(CTSStruct*)*height)
         cdef int i, j
         for i in range(self.height):
@@ -285,7 +288,8 @@ cdef class CTSDensityModel:
 
 
     def update(self, obs):
-        obs = resize(obs, (self.height, self.width), preserve_range=True)
+        self.n += 1
+        obs = resize(obs, (self.height, self.width), preserve_range=True, mode='constant')
         obs = np.floor((obs*self.num_bins)).astype(np.int32)
         log_prob, log_recoding_prob = self._update(obs)
         return self.exploration_bonus(log_prob, log_recoding_prob)
@@ -304,17 +308,17 @@ cdef class CTSDensityModel:
                 context[2] = obs[i-1, j] if i > 0 else 0
                 context[1] = obs[i-1, j-1] if i > 0 and j > 0 else 0
                 context[0] = obs[i-1, j+1] if i > 0 and j < self.width-1 else 0
-                print(i, j)
                 log_prob += cts_update(&self.cts_factors[i][j], context, obs[i, j])
                 log_recoding_prob += cts_log_prob(&self.cts_factors[i][j], context, obs[i, j])
         return log_prob, log_recoding_prob
 
     def exploration_bonus(self, log_prob, log_recoding_prob):
         recoding_prob = np.exp(log_recoding_prob)
-        prob_ratio = np.exp(log_recoding_prob - log_prob)
+        pred_gain = np.maximum(log_recoding_prob - log_prob, 0)
+        prob_ratio = np.exp((self.c / np.sqrt(self.n)) * pred_gain)
 
-        pseudocount = (1 - recoding_prob) / np.maximum(prob_ratio - 1, 1e-10)
-        return self.beta / np.sqrt(pseudocount + .01)
+        pseudocount = 1 / np.maximum(prob_ratio - 1, 1e-10)
+        return 1 / np.sqrt(pseudocount)
 
     def get_state(self):
         return self.num_bins, self.height, self.width, self.beta, [[

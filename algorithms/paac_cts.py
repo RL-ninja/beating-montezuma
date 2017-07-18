@@ -8,12 +8,7 @@ PixelCNN
 # from actor_learner import ONE_LIFE_GAMES
 
 from algorithms.paac import PAACLearner
-# original CTS version
-# from utilities.cts_density_model import CTSDensityModel
-# faster CTS version
 from utilities.fast_cts import CTSDensityModel
-# original CTS version#2 (logic is the same)
-# from utilities.cts_bonus import ExplorationBonus
 import numpy as np
 
 class PAACCTSLearner(PAACLearner):
@@ -21,23 +16,25 @@ class PAACCTSLearner(PAACLearner):
     def __init__(self, network_creator, environment_creator, args):
         super(PAACCTSLearner, self).__init__(network_creator, environment_creator, args)
 
-
+        # sec. 3.3 in https://arxiv.org/pdf/1703.01310v2.pdf says
+        # a good combination is: lr=0.001, c=0.1
+        # and we don't use beta at all
+        # note the reported setup is for pixelcnn
+        # a large c slows decay rate
         model_args = {
             'height': 42,
             'width': 42,
             'num_bins': 8,
-            'beta': 0.05
+            'c': 0.1,
+            'global_step': self.global_step
         }
 
         self._density_model = CTSDensityModel(**model_args)
-        # self.bonuses = []
-        # self._density_model = ExplorationBonus(**model_args)
 
     def _compute_bonus(self, state):
-        latest_state = state[:,:, -1]
-        # import pdb;pdb.set_trace()
-        return self._density_model.update(latest_state)
-        # return self._density_model.bonus(latest_state)
+        state = state[:,:, -1].astype(np.float32)
+        state /= 256.0 # 8 bit grayscale/rgb
+        return self._density_model.update(state)
 
 
     def rescale_reward(self, reward, state):
@@ -48,4 +45,5 @@ class PAACCTSLearner(PAACLearner):
             reward = -1.0        
         bonus = self._compute_bonus(state)
         reward += bonus
+        print(bonus)
         return reward
