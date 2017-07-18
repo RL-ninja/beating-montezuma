@@ -10,5 +10,5 @@ extensions = [
 setup(
     name='beating-montezuma',
     include_dirs=[np.get_include()],   
-    ext_modules=cythonize('utilities/fast_cts.pyx')
+    ext_modules=cythonize(extensions)
 )
