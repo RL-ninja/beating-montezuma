@@ -156,14 +156,12 @@ class PAACLearner(ActorLearner):
 
             episodes_over_masks[t] = 1.0 - shared_episode_over.astype(np.float32)
 
-            for env_i, (raw_reward, episode_over) in enumerate(zip(shared_rewards, shared_episode_over)):
-                total_episode_rewards[env_i] += raw_reward
-                reward = self.rescale_reward(raw_reward, states[t][env_i])
-                rewards[t, env_i] = reward
-                emulator_steps[env_i] += 1                    
+            for env_i, (raw_reward, episode_over) in enumerate(zip(shared_rewards, shared_episode_over)):                
+                self._process_reward(t, env_i, raw_reward)
                 
+                emulator_steps[env_i] += 1                                    
                 self.global_step += 1
-
+                
                 if episode_over:
                     self.total_rewards.append(total_episode_rewards[env_i])
                     self._update_tf_summary(env_i)
@@ -171,6 +169,14 @@ class PAACLearner(ActorLearner):
                     emulator_steps[env_i] = 0
                     actions_sum[env_i] = np.zeros(self.num_actions)
 
+    def _process_reward(self, t, env_i, raw_reward):
+        total_episode_rewards = self._imd_vars['total_episode_rewards']
+        rewards = self._imd_vars['rewards']
+        
+        total_episode_rewards[env_i] += raw_reward
+        r = self.clip_reward(raw_reward)
+        rewards[t, env_i] = r
+        
 
     def _run_learners(self):    
         shared_states = self._imd_vars['shared_states']

@@ -28,9 +28,8 @@ class EmulatorRunner(Process):
             shared_episode_over = self.variables[2]
             shared_actions = self.variables[3]
             
-            for i, (emulator, action) in enumerate(zip(self.emulators, self.variables[-1])):            
+            for i, (emulator, action) in enumerate(zip(self.emulators, shared_actions)):            
                 emulator = self.emulators[i]
-                action = shared_actions[i]            
                 new_s, reward, episode_over = emulator.next(action)
                 if episode_over:
                     shared_states[i] = emulator.get_initial_state()

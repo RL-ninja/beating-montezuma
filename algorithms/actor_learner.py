@@ -92,7 +92,7 @@ class ActorLearner(Process):
             self.optimizer_saver.save(self.session, self.optimizer_checkpoint_folder, global_step=self.last_saving_step)
     
 
-    def rescale_reward(self, reward, state=None):
+    def clip_reward(self, reward):
         """ Clip raw reward """
         if reward > 1.0:
             reward = 1.0

@@ -270,13 +270,13 @@ cdef class CTSDensityModel:
     cdef float beta
     cdef CTSStruct** cts_factors
 
-    def __init__(self, int height=42, int width=42, int num_bins=8, float beta=0.05, c=0.1, global_step=0):
+    def __init__(self, int height=42, int width=42, int num_bins=8, float beta=0.05, c=0.1, n=1):
         self.height = height
         self.width = width
         self.beta = beta
         self.num_bins = num_bins
         self.c = c
-        self.n = global_step
+        self.n = n
         self.cts_factors = <CTSStruct**>PyMem_Malloc(sizeof(CTSStruct*)*height)
         cdef int i, j
         for i in range(self.height):
@@ -321,12 +321,13 @@ cdef class CTSDensityModel:
         return 1 / np.sqrt(pseudocount)
 
     def get_state(self):
-        return self.num_bins, self.height, self.width, self.beta, [[
+        cts_state = [[
             cts_get_state(&self.cts_factors[i][j]) for j in range(self.width)
             ] for i in range(self.height)]
+        return self.num_bins, self.height, self.width, self.beta, self.c, self.n, cts_state
 
     def set_state(self, state):
-        self.num_bins, self.height, self.width, self.beta, cts_state = state
+        self.num_bins, self.height, self.width, self.beta, self.c, self.n, cts_state = state
         for i in range(self.height):
             for j in range(self.width):
                 cts_set_state(&self.cts_factors[i][j], cts_state[i][j])

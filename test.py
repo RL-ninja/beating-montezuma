@@ -1,17 +1,23 @@
 import os
-from train import get_network_and_environment_creator, bool_arg
-import logger_utils
+import logging
+import sys
 import argparse
 import numpy as np
 import time
 import tensorflow as tf
 import random
-from paac import PAACLearner
+
+from algorithms.paac import PAACLearner
+from algorithms.paac_cts import PAACCTSLearner
+from train import get_network_and_environment_creator, bool_arg
+from utilities import logger_utils
+from networks.policy_v_network import NaturePolicyVNetwork, NIPSPolicyVNetwork
+
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 
 def get_save_frame(name):
     import imageio
-
     writer = imageio.get_writer(name + '.gif', fps=30)
 
     def get_frame(frame):
@@ -19,7 +25,8 @@ def get_save_frame(name):
 
     return get_frame
 
-if __name__ == '__main__':
+
+def get_arg_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', '--folder', type=str, help="Folder where to save the debugging information.", dest="folder", required=True)
     parser.add_argument('-tc', '--test_count', default='1', type=int, help="The amount of tests to run on the given network", dest="test_count")
@@ -27,8 +34,10 @@ if __name__ == '__main__':
     parser.add_argument('-gn', '--gif_name', default=None, type=str, help="If provided, a gif will be produced and stored with this name", dest="gif_name")
     parser.add_argument('-gf', '--gif_folder', default='', type=str, help="The folder where to save gifs.", dest="gif_folder")
     parser.add_argument('-d', '--device', default='/gpu:0', type=str, help="Device to be used ('/cpu:0', '/gpu:0', '/gpu:1',...)", dest="device")
+    return parser
 
-    args = parser.parse_args()
+
+def configure_with_args(args):
     arg_file = os.path.join(args.folder, 'args.json')
     device = args.device
     for k, v in logger_utils.load_args(arg_file).items():
@@ -47,20 +56,29 @@ if __name__ == '__main__':
     rng = np.random.RandomState(int(time.time()))
     args.random_seed = rng.randint(1000)
 
+
+if __name__ == '__main__':
+    args = get_arg_parser().parse_args()
+    configure_with_args(args)
+    
     network_creator, env_creator = get_network_and_environment_creator(args)
     network = network_creator()
-    saver = tf.train.Saver()
 
-    rewards = []
     environments = [env_creator.create_environment(i) for i in range(args.test_count)]
+    
     if args.gif_name:
         for i, environment in enumerate(environments):
             environment.on_new_frame = get_save_frame(os.path.join(args.gif_folder, args.gif_name + str(i)))
-
+    
+    if args.learning_algorithm=='paac_cts':
+        learner = PAACCTSLearner(network_creator, env_creator, args)
+    else:
+        learner = PAACLearner(network_creator, env_creator, args)
+  
+    rewards = []    
+    saver = tf.train.Saver()
     config = tf.ConfigProto()
-    if 'gpu' in args.device:
-        config.gpu_options.allow_growth = True
-
+    
     with tf.Session(config=config) as sess:
         checkpoints_ = os.path.join(df, 'checkpoints')
         network.init(checkpoints_, saver, sess)
@@ -74,7 +92,7 @@ if __name__ == '__main__':
         episodes_over = np.zeros(args.test_count, dtype=np.bool)
         rewards = np.zeros(args.test_count, dtype=np.float32)
         while not all(episodes_over):
-            actions, _, _ = PAACLearner.choose_next_actions(network, env_creator.num_actions, states, sess)
+            actions, _, _ = learner.choose_next_actions(network, env_creator.num_actions, states, sess)
             for j, environment in enumerate(environments):
                 state, r, episode_over = environment.next(actions[j])
                 states[j] = state
