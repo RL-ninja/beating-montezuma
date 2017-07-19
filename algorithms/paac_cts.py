@@ -9,6 +9,7 @@ PixelCNN
 
 import numpy as np
 # import cPickle
+import time
 
 from algorithms.paac import PAACLearner
 from utilities.fast_cts import CTSDensityModel
@@ -35,9 +36,7 @@ class CTSDensityModelMixin(object):
     
 
     def _compute_bonus(self, state):
-        # TODO: decouple _density_model.update into update and compute bonus 
-        state = state[:,:, -1].astype(np.float32)
-        state /= 256.0 # convert 8 bit grayscale/rgb to float32
+        state = state[:,:, -1]
         # state will be quantized to 3 bit grayscale later (b/c num_bins)
         return self._density_model.update(state)
 
@@ -59,12 +58,12 @@ class CTSDensityModelMixin(object):
         self.density_model.set_state(cPickle.loads(raw_data))
 
 
-
 class CTSEmulatorRunner(EmulatorRunner, CTSDensityModelMixin):
     """docstring for CTSEmulatorRunner"""
     def __init__(self, *args):
         super(CTSEmulatorRunner, self).__init__(*args)
         self._init_density_model()
+        # self._tmp = []
 
     def _run(self):
         count = 0
@@ -82,13 +81,11 @@ class CTSEmulatorRunner(EmulatorRunner, CTSDensityModelMixin):
             
             for i, (emulator, action) in enumerate(zip(self.emulators, shared_actions)):            
                 emulator = self.emulators[i]
-
                 new_s, reward, episode_over = emulator.next(action)
-
-                # bonus as a function of next_state
-                # bonus = self._compute_bonus(new_s)
-                bonus = 0.0
-                # print('worker_id {} gets {}'.format(self.worker_id, bonus))
+                
+                # bonus_start = time.clock()
+                # self._tmp.append(time.clock() - bonus_start)
+                bonus = self._compute_bonus(new_s)
                 shared_bonuses[i] = bonus
 
                 if episode_over:
@@ -98,6 +95,7 @@ class CTSEmulatorRunner(EmulatorRunner, CTSDensityModelMixin):
                 shared_rewards[i] = reward                
                 shared_episode_over[i] = episode_over
             
+            # print(np.mean(self._tmp))
             count += 1
             
             # barrier is a queue shared by all workers
@@ -113,6 +111,23 @@ class PAACCTSLearner(PAACLearner):
     """docstring for PAACCTSLearner"""
     def __init__(self, network_creator, environment_creator, args):
         super(PAACCTSLearner, self).__init__(network_creator, environment_creator, args)
+        model_args = {
+            'height': 42,
+            'width': 42,
+            'num_bins': 8,
+            'beta': 0.05
+        }
+
+        self._density_model = CTSDensityModel(**model_args)
+    
+
+    # def _compute_bonus(self, state):
+    #     # TODO: decouple _density_model.update into update and compute bonus 
+    #     state = state[:,:, -1].astype(np.float32)
+    #     state /= 256.0 # convert 8 bit grayscale/rgb to float32
+    #     # state will be quantized to 3 bit grayscale later (b/c num_bins)
+    #     return self._density_model.update(state)
+
 
     def _init_environments(self, variables):
         self.runners = Runners(CTSEmulatorRunner, self.emulators, self.workers, variables)
@@ -158,8 +173,8 @@ class PAACCTSLearner(PAACLearner):
                 # reward for statistics
                 total_episode_rewards[env_i] += raw_reward
                 # reward for training
-                rewards[t, env_i] = self.clip_reward(raw_reward + bonus)
-                                
+
+                rewards[t, env_i] = self.clip_reward(raw_reward + bonus)                
                 emulator_steps[env_i] += 1                                    
                 self.global_step += 1
                 
