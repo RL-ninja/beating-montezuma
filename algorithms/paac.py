@@ -9,6 +9,7 @@ from algorithms.actor_learner import *
 from environments.emulator_runner import EmulatorRunner
 from environments.runners import Runners
 
+        
 class PAACLearner(ActorLearner):
     def __init__(self, network_creator, environment_creator, args): 
         super(PAACLearner, self).__init__(network_creator, environment_creator, args)
@@ -28,7 +29,7 @@ class PAACLearner(ActorLearner):
 
         return new_actions, network_output_v, network_output_pi
 
-    def __choose_next_actions(self, states):
+    def _choose_next_actions(self, states):
         return PAACLearner.choose_next_actions(self.network, self.num_actions, states, self.session)
 
     @staticmethod
@@ -56,14 +57,19 @@ class PAACLearner(ActorLearner):
         shape = array.shape
         shared = RawArray(dtype, array.reshape(-1))
         return np.frombuffer(shared, dtype).reshape(shape)
+
     
-    def _init_environments(self):
-        # state, reward, episode_over(terminated), action
+    def _init_shared_vars(self):
+        # state, reward, episode_over(terminated), action, bonus
         variables = [(np.asarray([emulator.get_initial_state() for emulator in self.emulators], dtype=np.uint8)),
                      (np.zeros(self.emulator_counts, dtype=np.float32)),
                      (np.asarray([False] * self.emulator_counts, dtype=np.float32)),
-                     (np.zeros((self.emulator_counts, self.num_actions), dtype=np.float32))]
+                     (np.zeros((self.emulator_counts, self.num_actions), dtype=np.float32)),
+                     (np.zeros(self.emulator_counts, dtype=np.float32))]
+        return variables
 
+
+    def _init_environments(self, variables):
         self.runners = Runners(EmulatorRunner, self.emulators, self.workers, variables)
         self.runners.start()
 
@@ -74,8 +80,9 @@ class PAACLearner(ActorLearner):
         self.global_step_start = self.global_step
         logging.debug("Starting training at Step {}".format(self.global_step))
         
+        variables = self._init_shared_vars()
         # initialize environments and workers
-        self._init_environments()        
+        self._init_environments(variables)        
         self.total_rewards = []
         self.summaries_op = tf.summary.merge_all()
         
@@ -89,7 +96,7 @@ class PAACLearner(ActorLearner):
 
     def _init_intermediate_vars(self):
         # load intermediate/non-global variables
-        shared_states, shared_rewards, shared_episode_over, shared_actions = self.runners.get_shared_variables()
+        shared_states, shared_rewards, shared_episode_over, shared_actions, shared_bonuses = self.runners.get_shared_variables()
 
         emulator_steps = [0] * self.emulator_counts
         total_episode_rewards = self.emulator_counts * [0]
@@ -108,6 +115,7 @@ class PAACLearner(ActorLearner):
         self._imd_vars['shared_rewards'] = shared_rewards
         self._imd_vars['shared_episode_over'] = shared_episode_over
         self._imd_vars['shared_actions'] = shared_actions
+        self._imd_vars['shared_bonuses'] = shared_bonuses
         self._imd_vars['emulator_steps'] = emulator_steps
         self._imd_vars['total_episode_rewards'] = total_episode_rewards
         self._imd_vars['actions_sum'] = actions_sum
@@ -157,8 +165,12 @@ class PAACLearner(ActorLearner):
             episodes_over_masks[t] = 1.0 - shared_episode_over.astype(np.float32)
 
             for env_i, (raw_reward, episode_over) in enumerate(zip(shared_rewards, shared_episode_over)):                
-                self._process_reward(t, env_i, raw_reward)
-                
+                # reward for statistics
+                total_episode_rewards[env_i] += raw_reward
+                # reward for training
+                r = self.clip_reward(raw_reward)
+                rewards[t, env_i] = r
+                                
                 emulator_steps[env_i] += 1                                    
                 self.global_step += 1
                 
@@ -169,14 +181,6 @@ class PAACLearner(ActorLearner):
                     emulator_steps[env_i] = 0
                     actions_sum[env_i] = np.zeros(self.num_actions)
 
-    def _process_reward(self, t, env_i, raw_reward):
-        total_episode_rewards = self._imd_vars['total_episode_rewards']
-        rewards = self._imd_vars['rewards']
-        
-        total_episode_rewards[env_i] += raw_reward
-        r = self.clip_reward(raw_reward)
-        rewards[t, env_i] = r
-        
 
     def _run_learners(self):    
         shared_states = self._imd_vars['shared_states']

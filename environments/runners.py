@@ -14,6 +14,7 @@ class Runners(object):
         self.queues = [Queue() for _ in range(workers)]
         self.barrier = Queue()
 
+        # runners = worker processes = actor_learner process
         self.runners = [EmulatorRunner(i, emulators, vars, self.queues[i], self.barrier) for i, (emulators, vars) in
                         enumerate(zip(np.split(emulators, workers), zip(*[np.split(var, workers) for var in self.variables])))]
 
