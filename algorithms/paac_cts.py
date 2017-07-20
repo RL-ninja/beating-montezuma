@@ -124,7 +124,7 @@ class PAACCTSLearner(PAACLearner):
 
 
     def _init_environments(self, variables):
-        self.runners = Runners(EmulatorRunner, self.emulators, self.workers, variables)
+        self.runners = Runners(CTSEmulatorRunner, self.emulators, self.workers, variables)
         self.runners.start()
 
 
@@ -164,12 +164,12 @@ class PAACCTSLearner(PAACLearner):
 
             episodes_over_masks[t] = 1.0 - shared_episode_over.astype(np.float32)
 
-            for env_i, (raw_reward, episode_over) in enumerate(zip(shared_rewards, shared_episode_over)):                
+            for env_i, (raw_reward, bonus, episode_over) in enumerate(zip(shared_rewards, shared_bonuses, shared_episode_over)):                
                 # reward for statistics
                 total_episode_rewards[env_i] += raw_reward
                 # reward for training
                 # use single global model
-                bonus = self._get_exploration_bonus(states[t][env_i])
+                # bonus = self._get_exploration_bonus(states[t][env_i])
                 rewards[t, env_i] = self.clip_reward(raw_reward + bonus)
 
                 emulator_steps[env_i] += 1                                    
