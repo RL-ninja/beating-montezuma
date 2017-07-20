@@ -144,7 +144,7 @@ class PAACLearner(ActorLearner):
         episodes_over_masks = self._imd_vars['episodes_over_masks']
 
         for t in range(self.max_local_steps):
-            next_actions, readouts_v_t, _ = self.__choose_next_actions(shared_states)
+            next_actions, readouts_v_t, _ = self._choose_next_actions(shared_states)
             
             actions_sum += next_actions
             

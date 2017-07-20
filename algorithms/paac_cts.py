@@ -35,7 +35,7 @@ class CTSDensityModelMixin(object):
         self._density_model = CTSDensityModel(**model_args)
     
 
-    def _compute_bonus(self, state):
+    def _get_exploration_bonus(self, state):
         state = state[:,:, -1]
         # state will be quantized to 3 bit grayscale later (b/c num_bins)
         return self._density_model.update(state)
@@ -85,7 +85,7 @@ class CTSEmulatorRunner(EmulatorRunner, CTSDensityModelMixin):
                 
                 # bonus_start = time.clock()
                 # self._tmp.append(time.clock() - bonus_start)
-                bonus = self._compute_bonus(new_s)
+                bonus = self._get_exploration_bonus(new_s)
                 shared_bonuses[i] = bonus
 
                 if episode_over:
@@ -115,23 +115,21 @@ class PAACCTSLearner(PAACLearner):
             'height': 42,
             'width': 42,
             'num_bins': 8,
-            'beta': 0.05
+            'beta': 0.01
         }
 
         self._density_model = CTSDensityModel(**model_args)
     
-
-    # def _compute_bonus(self, state):
-    #     # TODO: decouple _density_model.update into update and compute bonus 
-    #     state = state[:,:, -1].astype(np.float32)
-    #     state /= 256.0 # convert 8 bit grayscale/rgb to float32
-    #     # state will be quantized to 3 bit grayscale later (b/c num_bins)
-    #     return self._density_model.update(state)
+    def _get_exploration_bonus(self, state):
+        state = state[:,:, -1]
+        # state will be quantized to 3 bit grayscale later (b/c num_bins)
+        return self._density_model.update(state)
 
 
     def _init_environments(self, variables):
-        self.runners = Runners(CTSEmulatorRunner, self.emulators, self.workers, variables)
+        self.runners = Runners(EmulatorRunner, self.emulators, self.workers, variables)
         self.runners.start()
+
 
     def _run_actors(self):
         shared_states = self._imd_vars['shared_states']
@@ -169,12 +167,14 @@ class PAACCTSLearner(PAACLearner):
 
             episodes_over_masks[t] = 1.0 - shared_episode_over.astype(np.float32)
 
-            for env_i, (raw_reward, bonus, episode_over) in enumerate(zip(shared_rewards, shared_bonuses, shared_episode_over)):                
+            for env_i, (raw_reward, episode_over) in enumerate(zip(shared_rewards, shared_episode_over)):                
                 # reward for statistics
                 total_episode_rewards[env_i] += raw_reward
                 # reward for training
+                # use single global model
+                bonus = self._get_exploration_bonus(states[t][env_i])
+                rewards[t, env_i] = self.clip_reward(raw_reward + bonus)
 
-                rewards[t, env_i] = self.clip_reward(raw_reward + bonus)                
                 emulator_steps[env_i] += 1                                    
                 self.global_step += 1
                 
