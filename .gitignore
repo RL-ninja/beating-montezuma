@@ -1,3 +1,5 @@
+*.gif
+cython_debug/**/*
 build/
 *.so
 *.c

@@ -1,6 +1,8 @@
 import numpy as np
 from ale_python_interface import ALEInterface
 from scipy.misc import imresize
+import cv2
+
 import random
 from environments.environment import BaseEnvironment, FramePool,ObservationPool
 
@@ -36,7 +38,7 @@ class AtariEmulator(BaseEnvironment):
         # (i.e., four 84x84 images)
         self.observation_pool = ObservationPool(np.zeros((IMG_SIZE_X, IMG_SIZE_Y, NR_IMAGES), dtype=np.uint8))
         self.rgb_screen = np.zeros((self.screen_height, self.screen_width, 3), dtype=np.uint8)
-        self.gray_screen = np.zeros((self.screen_height, self.screen_width,1), dtype=np.uint8)
+        self.gray_screen = np.zeros((self.screen_height, self.screen_width, 1), dtype=np.uint8)
         self.frame_pool = FramePool(np.empty((2, self.screen_height,self.screen_width), dtype=np.uint8),
                                     self.__process_frame_pool)
 
@@ -69,9 +71,20 @@ class AtariEmulator(BaseEnvironment):
     def __process_frame_pool(self, frame_pool):
         """ Preprocess frame pool """
         
+        # max pooling method: optional for blinking sprites
         img = np.amax(frame_pool, axis=0)
-        img = imresize(img, (84, 84), interp='nearest')
-        img = img.astype(np.uint8)
+        
+        # option_1: use scipy resize        
+        # img = imresize(img, (84, 84), interp='nearest')
+        # img = img.astype(np.uint8)
+
+        # option_2: use opencv resize
+        img = cv2.resize(img, (84, 84), 
+            interpolation=cv2.INTER_LINEAR)
+        
+        # grayscale luminance level on [0, 1)
+        img = img.astype(np.float32)
+        img /= 256.0
         return img
 
     def __action_repeat(self, a, times=ACTION_REPEAT):
