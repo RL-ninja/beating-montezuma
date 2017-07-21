@@ -41,10 +41,6 @@ class PAACLearner(ActorLearner):
         # Subtract a tiny value from probabilities in order to avoid
         # "ValueError: sum(pvals[:-1]) > 1.0" in numpy.multinomial
         probs = probs - np.finfo(np.float32).epsneg
-
-        # TODO: add epsilon greedy logic here
-        probs = probs - np.finfo(np.float32).epsneg
-                
         # Bolztmann exploration: sampling by the prob distribution.
         # note we don't argmax (=greedy) here to bring in diversity.
         action_indexes = [int(np.nonzero(np.random.multinomial(1, p))[0]) for p in probs]

@@ -40,10 +40,10 @@ class ActorLearner(Process):
 
         # exploration
         # self.exploration_strategy = 'boltzmann' 
-        self.exploration_strategy = 'egreedy' 
-        self.initial_epsilon = .1
-        self.final_epsilon = 1e-3
-        self.epsilon_decay_rate = 0.03
+        # self.exploration_strategy = 'egreedy' 
+        # self.epsilon = .1
+        # self.final_epsilon = 1e-3
+        # self.epsilon_decay_rate = 0.03
 
         # Optimizer
         grads_and_vars = self.optimizer.compute_gradients(self.network.loss)
