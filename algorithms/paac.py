@@ -41,7 +41,6 @@ class PAACLearner(ActorLearner):
         # Subtract a tiny value from probabilities in order to avoid
         # "ValueError: sum(pvals[:-1]) > 1.0" in numpy.multinomial
         probs = probs - np.finfo(np.float32).epsneg
-
         # Bolztmann exploration: sampling by the prob distribution.
         # note we don't argmax (=greedy) here to bring in diversity.
         action_indexes = [int(np.nonzero(np.random.multinomial(1, p))[0]) for p in probs]
@@ -61,7 +60,7 @@ class PAACLearner(ActorLearner):
     
     def _init_shared_vars(self):
         # state, reward, episode_over(terminated), action, bonus
-        variables = [(np.asarray([emulator.get_initial_state() for emulator in self.emulators], dtype=np.uint8)),
+        variables = [(np.asarray([emulator.get_initial_state() for emulator in self.emulators], dtype=np.float32)),
                      (np.zeros(self.emulator_counts, dtype=np.float32)),
                      (np.asarray([False] * self.emulator_counts, dtype=np.float32)),
                      (np.zeros((self.emulator_counts, self.num_actions), dtype=np.float32)),
@@ -105,7 +104,7 @@ class PAACLearner(ActorLearner):
         y_batch = np.zeros((self.max_local_steps, self.emulator_counts))
         adv_batch = np.zeros((self.max_local_steps, self.emulator_counts))
         rewards = np.zeros((self.max_local_steps, self.emulator_counts))
-        states = np.zeros([self.max_local_steps] + list(shared_states.shape), dtype=np.uint8)
+        states = np.zeros([self.max_local_steps] + list(shared_states.shape), dtype=np.float32)
         actions = np.zeros((self.max_local_steps, self.emulator_counts, self.num_actions))
         values = np.zeros((self.max_local_steps, self.emulator_counts))
         episodes_over_masks = np.zeros((self.max_local_steps, self.emulator_counts))

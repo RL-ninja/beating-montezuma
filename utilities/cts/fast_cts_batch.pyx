@@ -4,12 +4,13 @@
 cimport cython
 import numpy as np
 cimport numpy as np
+import cv2
 
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 from libc.math cimport log, exp
 from cpython cimport array
 
-from skimage.transform import resize
+# from skimage.transform import resize
 
 
 # Parameters of the CTS model. For clarity, we take these as constants.
@@ -113,7 +114,6 @@ cdef double node_update(CTSNodeStruct* node, int[:] context, int symbol):
     cdef CTSNodeStruct* child
     cdef double lp_child
     cdef double lp_node
-
     if context.shape[0] > 0:
         child = node_get_child(node, context[context.shape[0]-1])
         lp_child = node_update(child, context[:context.shape[0]-1], symbol)
@@ -227,15 +227,22 @@ cdef CTSStruct* make_cts(int context_length, int max_alphabet_size=256,
 cdef void free_cts(CTSStruct* cts):
     free_cts_node(cts[0]._root)
 
-cdef double cts_update(CTSStruct* cts, int[:] context, int symbol):    
+cdef void cts_update(CTSStruct* cts, int[:] context, int symbol):
+    cdef double log_prob
+
     cts[0]._time += 1.0
     cts[0].log_alpha = log(1.0 / (cts[0]._time + 1.0))
     cts[0].log_1_minus_alpha = log(cts[0]._time / (cts[0]._time + 1.0))
-    cdef double log_prob = node_update(cts[0]._root, context, symbol)
-    return log_prob
+
+    node_update(cts[0]._root, context, symbol)
 
 cdef double cts_log_prob(CTSStruct* cts, int[:] context, int symbol):
     #context is assumed to have correct length
+    return node_log_prob(cts[0]._root, context, symbol)
+
+cdef double cts_log_recoding_prob(CTSStruct* cts, int[:] context, int symbol):    
+    #context is assumed to have correct length
+    
     return node_log_prob(cts[0]._root, context, symbol)
 
 cdef cts_get_state(CTSStruct* ptr):
@@ -254,8 +261,8 @@ cdef class CTS:
     def __init__(self, context_length, alphabet_size):
         self.inner = make_cts(context_length, alphabet_size)
         
-    cpdef double update(self, int[:] context, int symbol):
-        return cts_update(self.inner, context, symbol)
+    cpdef void update(self, int[:] context, int symbol):
+        cts_update(self.inner, context, symbol)
         
     cpdef double log_prob(self, int[:] context, int symbol):
         return cts_log_prob(self.inner, context, symbol)
@@ -265,37 +272,40 @@ cdef class CTSDensityModel:
     cdef unsigned int num_bins
     cdef unsigned int height
     cdef unsigned int width
-    cdef float c
-    cdef unsigned int n
     cdef float beta
     cdef CTSStruct** cts_factors
 
-    def __init__(self, int height=42, int width=42, int num_bins=8, float beta=0.05, c=0.1, n=1):
+    def __init__(self, int height=42, int width=42, int num_bins=8, float beta=0.05):
         self.height = height
         self.width = width
         self.beta = beta
         self.num_bins = num_bins
-        self.c = c
-        self.n = n
+        
         self.cts_factors = <CTSStruct**>PyMem_Malloc(sizeof(CTSStruct*)*height)
         cdef int i, j
         for i in range(self.height):
             self.cts_factors[i] = <CTSStruct*>PyMem_Malloc(sizeof(CTSStruct)*width)
             for j in range(self.width):
-                self.cts_factors[i][j] = make_cts(4, max_alphabet_size=num_bins)[0]                
+                self.cts_factors[i][j] = make_cts(4, max_alphabet_size=num_bins)[0]
+                
     def __dealloc__(self):
         pass
 
 
-    def update(self, obs):
-        self.n += 1
-        obs = resize(obs, (self.height, self.width), preserve_range=True, mode='constant')
+    def _quantize_obs(self, obs):
+        # obs = resize(obs, (self.height, self.width), mode='constant')        
+        obs = cv2.resize(obs, (self.height, self.width), interpolation=cv2.INTER_LINEAR)
         obs = np.floor((obs*self.num_bins)).astype(np.int32)
-        log_prob, log_recoding_prob = self._update(obs)
-        return self.exploration_bonus(log_prob, log_recoding_prob)
-    
+        return obs
 
-    cpdef (double, double) _update(self, int[:, :] obs):
+    def update(self, obs_batch):
+        # TODO: make this faster
+        # batch model update
+        for obs in obs_batch:
+            obs = self._quantize_obs(obs)
+            self._update(obs)
+
+    cpdef void _update(self, int[:, :] obs):
         cdef int[:] context = np.array([0, 0, 0, 0], np.int32)
         cdef double log_prob = 0.0
         cdef double log_recoding_prob = 0.0
@@ -308,26 +318,46 @@ cdef class CTSDensityModel:
                 context[2] = obs[i-1, j] if i > 0 else 0
                 context[1] = obs[i-1, j-1] if i > 0 and j > 0 else 0
                 context[0] = obs[i-1, j+1] if i > 0 and j < self.width-1 else 0
-                log_prob += cts_update(&self.cts_factors[i][j], context, obs[i, j])
-                log_recoding_prob += cts_log_prob(&self.cts_factors[i][j], context, obs[i, j])
+                cts_update(&self.cts_factors[i][j], context, obs[i, j])
+
+
+    cpdef (double, double) _get_probs(self, int[:, :] obs):
+        cdef int[:] context = np.array([0, 0, 0, 0], np.int32)
+        cdef double log_prob = 0.0
+        cdef double log_recoding_prob = 0.0
+        cdef unsigned int i
+        cdef unsigned int j
+
+        for i in range(self.height):
+            for j in range(self.width):
+                context[3] = obs[i, j-1] if j > 0 else 0
+                context[2] = obs[i-1, j] if i > 0 else 0
+                context[1] = obs[i-1, j-1] if i > 0 and j > 0 else 0
+                context[0] = obs[i-1, j+1] if i > 0 and j < self.width-1 else 0
+                # cts update
+
+                log_prob += cts_log_prob(&self.cts_factors[i][j], context, obs[i, j])
+                log_recoding_prob += cts_log_recoding_prob(&self.cts_factors[i][j], context, obs[i, j])
+
         return log_prob, log_recoding_prob
 
-    def exploration_bonus(self, log_prob, log_recoding_prob):
+    def get_exploration_bonus(self, obs):
+        obs = self._quantize_obs(obs)
+        # simply query the model
+        log_prob, log_recoding_prob = self._get_probs(obs)
         recoding_prob = np.exp(log_recoding_prob)
-        pred_gain = np.maximum(log_recoding_prob - log_prob, 0)
-        prob_ratio = np.exp((self.c / np.sqrt(self.n)) * pred_gain)
+        prob_ratio = np.exp(log_recoding_prob - log_prob)
 
-        pseudocount = 1 / np.maximum(prob_ratio - 1, 1e-10)
-        return 1 / np.sqrt(pseudocount)
+        pseudocount = (1 - recoding_prob) / np.maximum(prob_ratio - 1, 1e-10)
+        return self.beta / np.sqrt(pseudocount + .01)
 
     def get_state(self):
-        cts_state = [[
+        return self.num_bins, self.height, self.width, self.beta, [[
             cts_get_state(&self.cts_factors[i][j]) for j in range(self.width)
             ] for i in range(self.height)]
-        return self.num_bins, self.height, self.width, self.beta, self.c, self.n, cts_state
 
     def set_state(self, state):
-        self.num_bins, self.height, self.width, self.beta, self.c, self.n, cts_state = state
+        self.num_bins, self.height, self.width, self.beta, cts_state = state
         for i in range(self.height):
             for j in range(self.width):
                 cts_set_state(&self.cts_factors[i][j], cts_state[i][j])
