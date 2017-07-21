@@ -6,7 +6,6 @@ from utilities.logger_utils import variable_summaries
 import os
 
 CHECKPOINT_INTERVAL = 1000000
- 
 
 class ActorLearner(Process):
     
@@ -38,6 +37,13 @@ class ActorLearner(Process):
         self.gamma = args.gamma
         self.game = args.game
         self.network = network_creator()
+
+        # exploration
+        # self.exploration_strategy = 'boltzmann' 
+        self.exploration_strategy = 'egreedy' 
+        self.initial_epsilon = .1
+        self.final_epsilon = 1e-3
+        self.epsilon_decay_rate = 0.03
 
         # Optimizer
         grads_and_vars = self.optimizer.compute_gradients(self.network.loss)

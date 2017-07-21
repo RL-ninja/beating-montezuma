@@ -7,7 +7,7 @@ import copy
 
 from environments.environment_creator import *
 from algorithms.paac import PAACLearner
-from algorithms.paac_cts import PAACCTSLearner
+from algorithms.paac_cts import PseudoCountPAACLearner
 
 from networks.policy_v_network import NaturePolicyVNetwork, NIPSPolicyVNetwork
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -29,7 +29,7 @@ def main(args):
     network_creator, env_creator = get_network_and_environment_creator(args)
 
     if args.learning_algorithm=='paac_cts':
-        learner = PAACCTSLearner(network_creator, env_creator, args)
+        learner = PseudoCountPAACLearner(network_creator, env_creator, args)
     else:
         learner = PAACLearner(network_creator, env_creator, args)
 
@@ -102,7 +102,6 @@ def get_arg_parser():
     parser.add_argument('-df', '--debugging_folder', default='logs/', type=str, help="Folder where to save the debugging information.", dest="debugging_folder")
     parser.add_argument('-rs', '--random_start', default=True, type=bool_arg, help="Whether or not to start with 30 noops for each env. Default True", dest="random_start")
     parser.add_argument('-algo', '--learning_algorithm', default='paac', type=str, help="which learning algorithm to use", dest="learning_algorithm")
-
     return parser
 
 

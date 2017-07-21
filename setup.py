@@ -4,7 +4,7 @@ from Cython.Build import cythonize
 import numpy as np
 
 extensions = [
-    Extension('utilities.fast_cts', sources=['utilities/fast_cts.pyx'])
+    Extension('utilities.cts.fast_cts', sources=['utilities/cts/fast_cts.pyx'])
 ]
 
 setup(

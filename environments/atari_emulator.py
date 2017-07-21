@@ -36,10 +36,10 @@ class AtariEmulator(BaseEnvironment):
 
         # Processed historcal frames that will be fed in to the network 
         # (i.e., four 84x84 images)
-        self.observation_pool = ObservationPool(np.zeros((IMG_SIZE_X, IMG_SIZE_Y, NR_IMAGES), dtype=np.uint8))
+        self.observation_pool = ObservationPool(np.zeros((IMG_SIZE_X, IMG_SIZE_Y, NR_IMAGES), dtype=np.float32))
         self.rgb_screen = np.zeros((self.screen_height, self.screen_width, 3), dtype=np.uint8)
         self.gray_screen = np.zeros((self.screen_height, self.screen_width, 1), dtype=np.uint8)
-        self.frame_pool = FramePool(np.empty((2, self.screen_height,self.screen_width), dtype=np.uint8),
+        self.frame_pool = FramePool(np.empty((2, self.screen_height,self.screen_width), dtype=np.float32),
                                     self.__process_frame_pool)
 
     def get_legal_actions(self):
